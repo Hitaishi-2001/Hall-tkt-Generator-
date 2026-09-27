@@ -1,0 +1,137 @@
+import io
+import pandas as pd
+import streamlit as st
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+st.set_page_config(page_title="Hall Ticket Generator", layout="centered")
+
+st.title("🎫 Half-Yearly Exam Hall Ticket Generator")
+st.write("Upload your Excel sheet to instantly create printable PDF hall tickets.")
+
+# Template information
+with st.expander("📋 Required Excel File Format"):
+    st.write("Your Excel sheet should contain the following column headers:")
+    st.code("Roll No | Name | Class | Section | Exam Center", language="text")
+
+uploaded_file = st.file_uploader("Upload Excel File (.xlsx or .xls)", type=["xlsx", "xls"])
+
+def generate_pdf(df):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        rightMargin=36, 
+        leftMargin=36, 
+        topMargin=36, 
+        bottomMargin=36
+    )
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    
+    header_style = ParagraphStyle(
+        'SchoolHeader',
+        parent=styles['Heading1'],
+        fontName='Helvetica-Bold',
+        fontSize=14,
+        alignment=1,
+        spaceAfter=4
+    )
+    
+    title_style = ParagraphStyle(
+        'ExamTitle',
+        parent=styles['Heading2'],
+        fontName='Helvetica-Bold',
+        fontSize=11,
+        alignment=1,
+        textColor=colors.HexColor("#1A365D"),
+        spaceAfter=10
+    )
+    
+    body_bold = ParagraphStyle('BodyBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9)
+    body_normal = ParagraphStyle('BodyNormal', parent=styles['Normal'], fontName='Helvetica', fontSize=9)
+
+    for idx, row in df.iterrows():
+        # Header Section
+        elements.append(Paragraph("SCHOOL / COLLEGE NAME", header_style))
+        elements.append(Paragraph("HALF-YEARLY EXAMINATION HALL TICKET", title_style))
+        
+        # Student Information Grid
+        data = [
+            [
+                Paragraph("Roll Number:", body_bold), Paragraph(str(row.get('Roll No', '')), body_normal),
+                Paragraph("Class & Sec:", body_bold), Paragraph(f"{row.get('Class', '')} - {row.get('Section', '')}", body_normal)
+            ],
+            [
+                Paragraph("Student Name:", body_bold), Paragraph(str(row.get('Name', '')), body_normal),
+                Paragraph("Exam Center:", body_bold), Paragraph(str(row.get('Exam Center', '')), body_normal)
+            ]
+        ]
+        
+        info_table = Table(data, colWidths=[1.2 * inch, 2.3 * inch, 1.2 * inch, 2.3 * inch])
+        info_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F7FAFC")),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E0")),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 12))
+        
+        # Signature Block
+        sig_data = [
+            [
+                Paragraph("___________________<br/><b>Student Signature</b>", body_normal),
+                Paragraph("___________________<br/><b>Invigilator Signature</b>", body_normal),
+                Paragraph("___________________<br/><b>Principal Signature</b>", body_normal)
+            ]
+        ]
+        sig_table = Table(sig_data, colWidths=[2.3 * inch, 2.3 * inch, 2.4 * inch])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ]))
+        elements.append(sig_table)
+        
+        # Divider Line between tickets
+        elements.append(Spacer(1, 15))
+        if idx < len(df) - 1:
+            divider = Table([['']], colWidths=[7 * inch])
+            divider.setStyle(TableStyle([
+                ('LINEBELOW', (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E0"))
+            ]))
+            elements.append(divider)
+            elements.append(Spacer(1, 15))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file)
+        st.success(f"Loaded {len(df)} student records successfully!")
+        
+        # Display preview of uploaded data
+        st.subheader("Data Preview")
+        st.dataframe(df.head(), use_container_width=True)
+        
+        # Generate PDF Button
+        if st.button("📄 Generate Hall Tickets PDF", type="primary"):
+            with st.spinner("Generating PDF..."):
+                pdf_data = generate_pdf(df)
+            
+            st.download_button(
+                label="⬇️ Download All Hall Tickets (PDF)",
+                data=pdf_data,
+                file_name="Half_Yearly_Hall_Tickets.pdf",
+                mime="application/pdf"
+            )
+            
+    except Exception as e:
+        st.error(f"Error processing the file: {e}")
